@@ -1,4 +1,5 @@
 'use client';
+
 import {
   DndContext,
   closestCenter,
@@ -22,10 +23,9 @@ import { Task } from '@/types/type';
 export default function Dashboard() {
   const { user, loading } = useAuth();
   const [tasks, setTasks] = useState<Task[]>([]);
-  const [fetching, setFetching] = useState(true);
+  //const [fetching, setFetching] = useState(true); 
   const [newTask, setNewTask] = useState({ title: '', status: 'todo' });
 
-  // Drag & drop setup
   const sensors = useSensors(useSensor(PointerSensor));
 
   useEffect(() => {
@@ -38,11 +38,10 @@ export default function Dashboard() {
         .eq('user_id', user.id);
 
       if (!error) setTasks(data as Task[]);
-      setFetching(false);
+      //setFetching(false); 
     })();
   }, [user, loading]);
 
-  // Add new task
   const handleAddTask = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTask.title.trim()) return;
@@ -63,13 +62,11 @@ export default function Dashboard() {
     }
   };
 
-  // Delete task
   const handleDelete = async (id: string) => {
     const { error } = await supabase.from('tasks').delete().eq('id', id);
     if (!error) setTasks((prev) => prev.filter((t) => t.id !== id));
   };
 
-  // Handle drag and drop between columns
   const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
 
@@ -101,6 +98,7 @@ export default function Dashboard() {
   };
 
   if (!user) return <p className="p-8 text-center">Please log in</p>;
+  //if (fetching) return <p className="p-8 text-center">Loading tasks...</p>;
 
   return (
     <div className="p-8 bg-neutral-100 min-h-screen">
