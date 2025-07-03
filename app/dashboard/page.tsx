@@ -1,116 +1,153 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import {
   DndContext,
-  closestCenter,
   PointerSensor,
   useSensor,
   useSensors,
-  DragEndEvent
+  DragEndEvent,
+  closestCenter
 } from '@dnd-kit/core';
 import {
   SortableContext,
   verticalListSortingStrategy
 } from '@dnd-kit/sortable';
-import { useEffect, useState } from 'react';
+import { useDroppable } from '@dnd-kit/core';
+
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/AuthProvider';
+import SortableItem from '@/components/ui/SortableItem';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import SortableItem from '@/components/ui/SortableItem';
-import { Task } from '@/types/type';
+
+/* ---------- Task type ---------- */
+export type Task = {
+  id: string;
+  title: string;
+  status: 'todo' | 'pending' | 'done';
+};
+
+/* ---------- Droppable column wrapper ---------- */
+function DroppableColumn({
+  status,
+  children
+}: {
+  status: Task['status'];
+  children: React.ReactNode;
+}) {
+  const { setNodeRef } = useDroppable({ id: status });
+  return (
+    <div ref={setNodeRef} className="bg-white p-4 rounded shadow">
+      {children}
+    </div>
+  );
+}
 
 export default function Dashboard() {
-  const { user, loading } = useAuth();
+  const { user } = useAuth();
+
+  /* ---- local task list ---- */
   const [tasks, setTasks] = useState<Task[]>([]);
-  //const [fetching, setFetching] = useState(true); 
-  const [newTask, setNewTask] = useState({ title: '', status: 'todo' });
 
-  const sensors = useSensors(useSensor(PointerSensor));
+  /* ---- add‑task form state (typed) ---- */
+  const [newTask, setNewTask] = useState<{
+    title: string;
+    status: Task['status'];
+  }>({ title: '', status: 'todo' });
 
+  /* ---- fetch tasks once on mount ---- */
   useEffect(() => {
-    if (!user || loading) return;
+    if (!user) return;
+    supabase
+      .from('tasks')
+      .select('*')
+      .eq('user_id', user.id)
+      .then(({ data }) => setTasks((data ?? []) as Task[]));
+  }, [user]);
 
-    (async () => {
-      const { data, error } = await supabase
-        .from('tasks')
-        .select('*')
-        .eq('user_id', user.id);
-
-      if (!error) setTasks(data as Task[]);
-      //setFetching(false); 
-    })();
-  }, [user, loading]);
-
+  /* ---- add new task ---- */
   const handleAddTask = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newTask.title.trim()) return;
+    if (!user || !newTask.title.trim()) return;
 
     const { data, error } = await supabase
       .from('tasks')
       .insert({
         title: newTask.title,
         status: newTask.status,
-        user_id: user!.id
+        user_id: user.id
       })
       .select()
       .single();
 
-    if (!error) {
+    if (!error && data) {
       setTasks((prev) => [...prev, data as Task]);
       setNewTask({ title: '', status: 'todo' });
     }
   };
 
+  /* ---- delete helper ---- */
   const handleDelete = async (id: string) => {
     const { error } = await supabase.from('tasks').delete().eq('id', id);
     if (!error) setTasks((prev) => prev.filter((t) => t.id !== id));
   };
 
+  /* ---- drag & drop sensors ---- */
+  const sensors = useSensors(useSensor(PointerSensor));
+
+  /* ---- on card drop ---- */
   const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
+    if (!over) return;
 
-    if (!over || !active) return;
-    const activeId = active.id;
-    const newStatus = over.id as Task['status'];
+    const draggedId = active.id as string;
 
-    const taskToUpdate = tasks.find((t) => t.id === activeId);
-    if (!taskToUpdate || taskToUpdate.status === newStatus) return;
+    /* 1‑ Determine target status */
+    let newStatus: Task['status'] | undefined;
+    if (['todo', 'pending', 'done'].includes(String(over.id))) {
+      newStatus = over.id as Task['status']; // dropped on empty column
+    } else {
+      newStatus = tasks.find((t) => t.id === over.id)?.status; // dropped on another card
+    }
 
+    const task = tasks.find((t) => t.id === draggedId);
+    if (!task || !newStatus || task.status === newStatus) return;
+
+    /* 2‑ Update DB then local state */
     const { data, error } = await supabase
       .from('tasks')
       .update({ status: newStatus })
-      .eq('id', activeId)
+      .eq('id', draggedId)
       .select()
       .single();
 
-    if (!error) {
+    if (!error && data) {
       setTasks((prev) =>
-        prev.map((t) => (t.id === activeId ? (data as Task) : t))
+        prev.map((t) => (t.id === draggedId ? (data as Task) : t))
       );
     }
   };
 
+  /* ---- group tasks for each column ---- */
   const grouped = {
     todo: tasks.filter((t) => t.status === 'todo'),
     pending: tasks.filter((t) => t.status === 'pending'),
     done: tasks.filter((t) => t.status === 'done')
   };
 
-  if (!user) return <p className="p-8 text-center">Please log in</p>;
-  //if (fetching) return <p className="p-8 text-center">Loading tasks...</p>;
+  if (!user) return <p className="p-6">Please log in</p>;
 
   return (
     <div className="p-8 bg-neutral-100 min-h-screen">
       <h1 className="text-3xl font-bold mb-6">Dashboard</h1>
 
-      {/* Add task form */}
+      {/* ----- add‑task form ----- */}
       <form onSubmit={handleAddTask} className="flex gap-4 mb-8">
         <Input
-          placeholder="New task title"
+          placeholder="New task"
           value={newTask.title}
           onChange={(e) => setNewTask({ ...newTask, title: e.target.value })}
-          required
         />
         <select
           value={newTask.status}
@@ -120,7 +157,7 @@ export default function Dashboard() {
               status: e.target.value as Task['status']
             })
           }
-          className="rounded-md border border-gray-300 px-2 py-2"
+          className="border rounded px-2"
         >
           <option value="todo">Todo</option>
           <option value="pending">Pending</option>
@@ -129,7 +166,7 @@ export default function Dashboard() {
         <Button type="submit">Add</Button>
       </form>
 
-      {/* Task board */}
+      {/* ----- Kanban board ----- */}
       <DndContext
         sensors={sensors}
         collisionDetection={closestCenter}
@@ -137,8 +174,9 @@ export default function Dashboard() {
       >
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {(['todo', 'pending', 'done'] as const).map((status) => (
-            <div key={status} className="bg-white p-4 rounded shadow" id={status}>
+            <DroppableColumn key={status} status={status}>
               <h2 className="text-xl font-semibold capitalize mb-4">{status}</h2>
+
               <SortableContext
                 items={grouped[status].map((t) => t.id)}
                 strategy={verticalListSortingStrategy}
@@ -151,7 +189,7 @@ export default function Dashboard() {
                   />
                 ))}
               </SortableContext>
-            </div>
+            </DroppableColumn>
           ))}
         </div>
       </DndContext>
