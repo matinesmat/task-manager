@@ -1,18 +1,16 @@
-'use client';
-
 import { useSortable } from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities'; 
-import { Task } from '@/types/type';
-import { Card } from '@/components/ui/card';
-import { Trash2 } from 'lucide-react';
+import { CSS } from '@dnd-kit/utilities';
+import { Task } from '@/app/dashboard/page';
+import { Button } from '@/components/ui/button';
+import { GripVertical, Trash2 } from 'lucide-react'; // Icons for drag & delete
 
-
-type Props = {
+export default function SortableItem({
+  task,
+  onDelete
+}: {
   task: Task;
   onDelete: (id: string) => void;
-};
-
-export default function SortableItem({ task, onDelete }: Props) {
+}) {
   const {
     attributes,
     listeners,
@@ -27,20 +25,29 @@ export default function SortableItem({ task, onDelete }: Props) {
   };
 
   return (
-    <Card
+    <div
       ref={setNodeRef}
-      {...attributes}
-      {...listeners}
       style={style}
-      className="p-4 flex items-start gap-2"
+      className="bg-white p-4 rounded shadow mb-4 flex justify-between items-center"
     >
-      <p className="flex-1 font-medium">{task.title}</p>
-      <button
-        onClick={() => onDelete(task.id)}
-        className="text-red-500 hover:text-red-700"
-      >
-        <Trash2 size={16} />
-      </button>
-    </Card>
+      {/* Drag handle only */}
+      <span {...attributes} {...listeners} className="cursor-grab mr-2">
+        <GripVertical size={18} />
+      </span>
+
+      {/* Task title */}
+      <span className="flex-1">{task.title}</span>
+
+      {/* Delete button (not draggable) */}
+      <Button
+  variant="ghost"
+  className="text-red-600 hover:bg-red-50"
+  size="icon"
+  onClick={() => onDelete(task.id)}
+>
+  <Trash2 className="h-4 w-4" />
+</Button>
+
+    </div>
   );
 }
